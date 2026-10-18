@@ -1,0 +1,749 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Календоид</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@600;800&display=swap">
+<style>
+/* Layout: one column — compact scoreboard, the game field as a week calendar, legend and calendar editor below */
+:root{
+  --bg:#f3f5f9; --surface:#ffffff; --ink:#1b2333; --muted:#6a7488; --line:#e1e6ef;
+  --work-fill:#dde6ff; --work-ink:#2a45a3; --work-edge:#9fb3f0;
+  --fam-fill:#ffe1d4; --fam-ink:#a33b1c; --fam-edge:#f2a98c;
+  --me-fill:#daf2e3; --me-ink:#1d6a3d; --me-edge:#8bcba3;
+  --solid-fill:#e6e8ec; --solid-ink:#7b8392;
+  --ball:#e2462a; --paddle:#1b2333; --now:#e2462a;
+  --font-display:"Unbounded", "Onest", system-ui, sans-serif;
+  --font-body:"Onest", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#12161f; --surface:#1a202c; --ink:#e8ecf4; --muted:#949db0; --line:#2a3242;
+  --work-fill:#25335f; --work-ink:#c3d1ff; --work-edge:#4a62b0;
+  --fam-fill:#4a2a20; --fam-ink:#ffc9b4; --fam-edge:#a8573c;
+  --me-fill:#1d3a2a; --me-ink:#b6ebc8; --me-edge:#3f8a5c;
+  --solid-fill:#2a303c; --solid-ink:#8d95a6;
+  --ball:#ff6a4d; --paddle:#e8ecf4; --now:#ff6a4d; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#12161f; --surface:#1a202c; --ink:#e8ecf4; --muted:#949db0; --line:#2a3242;
+  --work-fill:#25335f; --work-ink:#c3d1ff; --work-edge:#4a62b0;
+  --fam-fill:#4a2a20; --fam-ink:#ffc9b4; --fam-edge:#a8573c;
+  --me-fill:#1d3a2a; --me-ink:#b6ebc8; --me-edge:#3f8a5c;
+  --solid-fill:#2a303c; --solid-ink:#8d95a6;
+  --ball:#ff6a4d; --paddle:#e8ecf4; --now:#ff6a4d; color-scheme:dark }
+
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:14px 24px;box-sizing:border-box}
+.wrap{width:min(100%, calc((100dvh - 150px) * 0.75));min-width:min(100%,300px);margin:0 auto;display:flex;flex-direction:column;gap:10px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--font-display);font-weight:800;font-size:clamp(18px,4.6vw,24px);letter-spacing:-.01em;margin:0;line-height:1.1}
+.week{font-size:13px;color:var(--muted);margin-top:4px}
+.stats{display:flex;gap:14px;font-variant-numeric:tabular-nums;font-size:13px;flex-wrap:wrap;align-items:flex-end}
+.stat b{display:block;font-size:17px;font-weight:700;color:var(--ink)}
+.stat span{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.lives{color:var(--ball);letter-spacing:2px}
+.stage{position:relative;width:100%;aspect-ratio:600/800;max-width:100%;border-radius:10px;overflow:hidden;
+  background:var(--surface);box-shadow:0 0 0 1px var(--line), 0 10px 30px -18px rgba(20,30,60,.35)}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:none;outline:none}
+.overlay{position:absolute;inset:auto 0 0 0;top:50%;display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:18px 20px 22px;text-align:center;pointer-events:none}
+.overlay .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 18px;max-width:320px;
+  box-shadow:0 12px 30px -16px rgba(20,30,60,.45);pointer-events:auto}
+.overlay h2{font-family:var(--font-display);font-weight:600;font-size:17px;margin:0 0 6px;text-wrap:balance}
+.overlay p{margin:0 0 12px;color:var(--muted);font-size:13px;line-height:1.45;text-wrap:balance}
+button,.btn{font:600 13px var(--font-body);border-radius:8px;border:1px solid var(--line);background:var(--ink);color:var(--surface);
+  padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,.btn:focus-within{outline:2px solid var(--ball);outline-offset:2px}
+.ghost{background:var(--surface);color:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:12px;color:var(--muted);align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px}
+.sw{width:12px;height:12px;border-radius:3px;border:1px solid}
+.sw.work{background:var(--work-fill);border-color:var(--work-edge)}
+.sw.fam{background:var(--fam-fill);border-color:var(--fam-edge)}
+.sw.me{background:var(--me-fill);border-color:var(--me-edge)}
+.sw.solid{background:var(--solid-fill);border-color:var(--line)}
+.hint{font-size:12px;color:var(--muted);line-height:1.5}
+.hint kbd{font:600 11px var(--font-body);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--surface);color:var(--ink)}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap}
+.ctrls{display:flex;gap:6px;align-items:center}
+.ctrls button{padding:8px 12px}
+.ctrls button.main{min-width:92px}
+.big body{padding-block:8px}
+.big .wrap{width:min(100%, calc((100dvh - 64px) * 0.75))}
+.big .legend,.big .hint,.big .toolbar,.big .week,.big .editor{display:none}
+
+.editor{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.editor h3{font-family:var(--font-display);font-weight:600;font-size:15px;margin:0}
+.editor p{margin:0;font-size:13px;color:var(--muted);line-height:1.5}
+.editor textarea{width:100%;box-sizing:border-box;min-height:220px;font:13px/1.55 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical}
+.editor textarea:focus{outline:2px solid var(--work-edge);outline-offset:0}
+.editor .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.editor .status{font-size:12px;color:var(--muted);min-height:1.2em}
+.editor .status.err{color:var(--ball)}
+.editor code{font:12px ui-monospace,Menlo,Consolas,monospace;background:var(--bg);padding:1px 4px;border-radius:4px;color:var(--ink)}
+.btn input{position:absolute;opacity:0;width:1px;height:1px}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Календоид</h1>
+      <div class="week" id="weekLabel">Неделя 1 из 3</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Освобождено</span><b id="hours">0 ч</b></div>
+      <div class="stat"><span>Жизни</span><b class="lives" id="lives">●●●</b></div>
+      <div class="ctrls">
+        <button type="button" id="pauseBtn" class="main">Пауза</button>
+        <button type="button" id="sizeBtn" class="ghost">Крупнее</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="cv" aria-label="Игровое поле: календарь недели"></canvas>
+    <div class="overlay" id="overlay">
+      <div class="card">
+        <h2 id="ovTitle">Неделя 1</h2>
+        <p id="ovText">Разбейте все встречи и дела. Двигайте ракетку мышью, пальцем или стрелками.</p>
+        <button id="ovBtn" type="button">Начать</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span class="chip"><i class="sw work"></i>Работа</span>
+    <span class="chip"><i class="sw fam"></i>Семья</span>
+    <span class="chip"><i class="sw me"></i>Моё</span>
+    <span class="chip"><i class="sw solid"></i>Обед — не разбивается</span>
+  </div>
+  <div class="hint">Каждую неделю повторяются только регулярные дела, разовые меняются. Бонусы падают из разбитых дел: <b>Перенести</b> расширяет ракетку, <b>Делегировать</b> даёт ещё два мяча, <b>Выходной</b> добавляет жизнь. Пауза: <kbd>P</kbd> или <kbd>Esc</kbd>. Запуск мяча: клик или <kbd>Пробел</kbd>.</div>
+  <div class="toolbar">
+    <button type="button" id="restartBtn" class="ghost">Начать заново</button>
+    <button type="button" id="editBtn" class="ghost">Свой календарь</button>
+  </div>
+
+  <section class="editor" id="editor" hidden>
+    <h3>Свой календарь</h3>
+    <p id="uploadNote">Загрузите скриншот своей недели — Claude перепишет события в список ниже. Список можно поправить руками, потом нажать «Играть».</p>
+    <div class="row">
+      <label class="btn" id="uploadLbl">Загрузить скриншот<input type="file" id="shot" accept="image/png,image/jpeg,image/webp"></label>
+      <button type="button" id="stopBtn" class="ghost" hidden>Остановить</button>
+    </div>
+    <div class="status" id="aiStatus" aria-live="polite"></div>
+    <label for="weekText" class="hint">Одна строка — одно дело: <code>Пн 15:00-16:00 | Метроном | работа | каждую неделю</code>. Тип: работа, семья или моё. Без «каждую неделю» дело разовое и на следующих неделях не появится. Для дел на весь день пишите <code>Пн весь день | …</code></label>
+    <textarea id="weekText" spellcheck="false"></textarea>
+    <div class="row">
+      <button type="button" id="applyBtn">Играть с этим календарём</button>
+      <button type="button" id="resetBtn" class="ghost">Вернуть исходный</button>
+    </div>
+    <div class="status" id="parseStatus" aria-live="polite"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+const W = 600, H = 800, GUT = 32, COLS = 7, COLW = 81, HEAD = 30, TOP = 34, SLOT = 40, HOURS = 11;
+const ROWS = HOURS + 1; // row 0 = весь день
+const GRID_BOTTOM = TOP + ROWS * SLOT;
+const PADDLE_Y = 762, PADDLE_H = 12, BALL_R = 7, PW = 96, PW_WIDE = 146;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const DAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+const STORE = 'svobodnaya-nedelya:week';
+
+const DEFAULT_TEXT = `Пн весь день | Сима олимпиада | семья
+Пн весь день | Записать Артёма | семья
+Ср весь день | Сима олимпиада | семья
+Чт весь день | Сима олимпиада | семья
+Пн 15:00-16:00 | Метроном | работа | каждую неделю
+Пн 20:00-21:00 | Нейро-тренажёр встреча 4 | моё | каждую неделю
+Вт 17:00-18:30 | Артём архитектура | семья | каждую неделю
+Ср 11:00-12:00 | Амбулатория, рецепты | семья
+Ср 15:00-16:00 | Синк маркетинга | работа | каждую неделю
+Ср 18:00-19:00 | Гимнастика Васены | семья | каждую неделю
+Ср 20:00-21:00 | Нейро-тренажёр встреча 5 | моё | каждую неделю
+Чт 17:00-18:30 | Артём архитектура | семья | каждую неделю
+Пт 15:30-16:30 | Артём ортодонт | семья
+Пт 19:00-20:00 | Команда Пак встреча 4 | моё | каждую неделю
+Пт 20:00-21:00 | Итоги недели | работа | каждую неделю
+Сб 10:15-11:15 | Гимнастика Васены | семья | каждую неделю
+Вс 10:15-11:15 | Растяжка | моё | каждую неделю
+Вс 12:00-13:00 | Артём Спартанцы | семья | каждую неделю
+Вс 13:00-14:00 | Сима математика | семья | каждую неделю
+Вс 14:00-15:30 | Артём керамика | семья | каждую неделю`;
+
+// One-off tasks for weeks 2 and 3. Each is used once, so шиномонтаж and собрание never repeat.
+const POOL_TANYA = {
+  fam: ['Василиса логопед','Шиномонтаж','Сима купальник','Артём АФК','Род. собрание','Артём врач','За рецептами','Оплата кружков','Забрать посылку','Продукты на неделю'],
+  work: ['Синк с Леной','ИИ-вёрстка','Отчёт касания','Правки ТЗ','Теги кейсов','SEO-аудит','Контент-план','Ревью лендинга','Созвон клиент','Планёрка'],
+};
+const POOL_GENERIC = {
+  fam: ['Врач','Шиномонтаж','Продукты','Род. собрание','Кружок','Аптека','Уборка','Забрать посылку','Оплатить счета','Стирка'],
+  work: ['Созвон','Письма','Отчёт','Планёрка','Дедлайн','Презентация','Ревью','Синк команды','Бюджет','Интервью'],
+};
+const LEVELS = [
+  { name: 'эта неделя', extra: 0, lunch: 0 },
+  { name: 'неделя с сюрпризами', extra: 8, lunch: 2 },
+  { name: 'неделя перед дедлайном', extra: 12, lunch: 3 },
+];
+const DROPS = { wide: { label: 'Перенести' }, multi: { label: 'Делегировать' }, life: { label: 'Выходной' } };
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+let C = {};
+function readTheme(){
+  const s = getComputedStyle(document.documentElement);
+  ['--surface','--ink','--muted','--line','--work-fill','--work-ink','--work-edge','--fam-fill','--fam-ink','--fam-edge',
+   '--me-fill','--me-ink','--me-edge','--solid-fill','--solid-ink','--ball','--paddle','--now'].forEach(k => C[k.slice(2)] = s.getPropertyValue(k).trim());
+}
+readTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTheme);
+new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+function resize(){
+  const r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+}
+new ResizeObserver(resize).observe(cv);
+
+function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function shuffle(a, r){ a = a.slice(); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function weekStart(offset){
+  const d = new Date(); d.setHours(0,0,0,0);
+  const day = (d.getDay() + 6) % 7; d.setDate(d.getDate() - day + 7 * offset); return d;
+}
+
+// ---------- calendar text format ----------
+const TYPE_WORDS = { 'работа': 'work', 'семья': 'fam', 'моё': 'me', 'мое': 'me', 'личное': 'me' };
+function parseWeek(text){
+  const events = [], bad = [];
+  text.split('\n').forEach((raw, i) => {
+    const line = raw.trim(); if (!line) return;
+    const parts = line.split('|').map(s => s.trim());
+    const m = parts[0].match(/^(пн|вт|ср|чт|пт|сб|вс)[а-я]*\.?\s*(.*)$/i);
+    if (!m || !parts[1]){ bad.push(i + 1); return; }
+    const d = DAYS.findIndex(x => x.toLowerCase() === m[1].toLowerCase());
+    const when = m[2].trim().toLowerCase();
+    const type = TYPE_WORDS[(parts[2] || '').toLowerCase()] || 'fam';
+    const repeat = /кажд|↻|повтор|регуляр/i.test(parts.slice(3).join(' '));
+    const title = parts[1].slice(0, 40);
+    if (!when || /весь|день|all/.test(when)){ events.push({ d, allDay: true, title, type, repeat }); return; }
+    const t = when.match(/(\d{1,2})[:.](\d{2})(?:\s*[-–—]\s*(\d{1,2})[:.](\d{2}))?/);
+    if (!t){ bad.push(i + 1); return; }
+    const s = +t[1] + +t[2] / 60, e = t[3] ? +t[3] + +t[4] / 60 : s + 1;
+    events.push({ d, allDay: false, start: s, end: Math.max(e, s + 0.25), label: t[3] ? `${t[1]}:${t[2]}–${t[3]}:${t[4]}` : `${t[1]}:${t[2]}`, title, type, repeat });
+  });
+  return { events, bad };
+}
+
+let WEEK = null, START_HOUR = 10, POOL = POOL_TANYA;
+function loadWeek(text){
+  const { events, bad } = parseWeek(text);
+  WEEK = events;
+  POOL = text.trim() === DEFAULT_TEXT.trim() ? POOL_TANYA : POOL_GENERIC;
+  const starts = events.filter(e => !e.allDay).map(e => Math.round(e.start));
+  START_HOUR = starts.length ? Math.max(6, Math.min(10, Math.min(...starts))) : 10;
+  return { n: events.length, bad };
+}
+
+// series like "встреча 4" count on: next week "встреча 6" if there are two a week
+function weekTitle(ev, li){
+  if (!ev.repeat || li === 0) return ev.title;
+  const m = ev.title.match(/^(.*?)(\d+)$/); if (!m) return ev.title;
+  const per = WEEK.filter(e => e.repeat && e.title.replace(/\d+$/, '') === m[1]).length || 1;
+  return m[1] + (+m[2] + li * per);
+}
+
+function buildLevel(li){
+  const spec = LEVELS[li], r = rng(li * 97 + 13);
+  const occ = Array.from({ length: COLS }, () => Array(ROWS).fill(false));
+  const allDayCount = Array(COLS).fill(0);
+  const blocks = [];
+  const events = li === 0 ? WEEK : WEEK.filter(e => e.repeat);
+  // fixed events
+  for (const ev of events){
+    const title = weekTitle(ev, li);
+    if (ev.allDay){
+      if (allDayCount[ev.d] >= 2) continue;
+      const b = mk(ev.d, 0, 1, ev.type, title, 1, allDayCount[ev.d]++); b.fixed = true; blocks.push(b); continue;
+    }
+    let row = 1 + Math.min(HOURS - 1, Math.max(0, Math.round(ev.start) - START_HOUR));
+    let span = Math.max(1, Math.min(3, Math.round(ev.end - ev.start)));
+    span = Math.min(span, ROWS - row);
+    const free = (rw, sp) => { for (let k = 0; k < sp; k++) if (rw + k >= ROWS || occ[ev.d][rw + k]) return false; return true; };
+    if (!free(row, span)){ // shift to the nearest free slot in the same day
+      let found = -1;
+      for (let dlt = 1; dlt < ROWS && found < 0; dlt++){
+        if (row + dlt < ROWS && free(row + dlt, 1)) found = row + dlt;
+        else if (row - dlt >= 1 && free(row - dlt, 1)) found = row - dlt;
+      }
+      if (found < 0) continue; row = found; span = 1;
+    }
+    for (let k = 0; k < span; k++) occ[ev.d][row + k] = true;
+    const b = mk(ev.d, row, span, ev.type, title, span + (li >= 1 && ev.type === 'work' ? 1 : 0), undefined, span > 1 ? ev.label : '');
+    b.fixed = true; blocks.push(b);
+  }
+  // lunch blocks at 13:00
+  const lunchRow = 1 + 13 - START_HOUR;
+  if (lunchRow >= 1 && lunchRow < ROWS) shuffle([0,1,2,3,4], r).slice(0, spec.lunch).forEach(c => {
+    if (!occ[c][lunchRow]){ occ[c][lunchRow] = true; blocks.push(mk(c, lunchRow, 1, 'solid', 'Обед', 1)); }
+  });
+  // one-off tasks: week 2 takes the start of each pool, week 3 the rest — nothing repeats
+  const half = spec.extra / 2;
+  const from = li === 1 ? 0 : LEVELS[1].extra / 2;
+  const queue = [];
+  for (let i = 0; i < half; i++){
+    if (POOL.fam[from + i]) queue.push(['fam', POOL.fam[from + i]]);
+    if (POOL.work[from + i]) queue.push(['work', POOL.work[from + i]]);
+  }
+  for (const [type, title] of queue){
+    for (let tries = 0; tries < 300; tries++){
+      const c = Math.floor(r() * (type === 'work' ? 5 : COLS));
+      const hr = START_HOUR + Math.floor(r() * (type === 'work' ? 9 : HOURS));
+      const row = 1 + hr - START_HOUR;
+      if (row >= ROWS || occ[c][row]) continue;
+      let span = r() < 0.3 && row + 1 < ROWS && !occ[c][row + 1] ? 2 : 1;
+      for (let k = 0; k < span; k++) occ[c][row + k] = true;
+      const label = span > 1 ? `${hr}:00–${hr + 2}:00` : '';
+      blocks.push(mk(c, row, span, type, title, Math.min(3, span + (li >= 2 && type === 'work' && r() < .4 ? 1 : 0)), undefined, label));
+      break;
+    }
+  }
+  return blocks;
+}
+function mk(c, row, span, type, title, hp, half, label){
+  const b = { c, row, span, type, title, hp, max: hp, alive: true, flash: 0, label: label || '', half,
+    x: GUT + c * COLW + 3, y: TOP + row * SLOT + 2, w: COLW - 6, h: span * SLOT - 4 };
+  if (half !== undefined){ b.y = TOP + 2 + half * (SLOT / 2); b.h = SLOT / 2 - 3; }
+  return b;
+}
+
+// ---------- game state ----------
+const S = { level: 0, lives: 3, hours: 0, blocks: [], balls: [], drops: [], parts: [], floats: [],
+  paddle: { x: W / 2, w: PW, wideUntil: 0 }, speed: 340, mode: 'ready', t: 0, keys: { l: false, r: false } };
+
+function startLevel(li){
+  S.level = li; S.blocks = buildLevel(li); S.drops = []; S.parts = []; S.floats = [];
+  S.speed = 330 + li * 35; S.paddle.w = PW; S.paddle.wideUntil = 0;
+  resetBall(); updateHud();
+}
+function resetBall(){ S.balls = [{ x: S.paddle.x, y: PADDLE_Y - BALL_R - 1, vx: 0, vy: 0, stuck: true }]; }
+function launch(){
+  S.balls.forEach(b => { if (b.stuck){ const a = (Math.random() - 0.5) * 0.8; b.vx = S.speed * Math.sin(a); b.vy = -S.speed * Math.cos(a); b.stuck = false; }});
+}
+function newGame(){ S.lives = 3; S.hours = 0; startLevel(0); show('ready'); }
+
+function show(mode){
+  S.mode = mode;
+  const ov = $('overlay'), lv = LEVELS[S.level];
+  const txt = {
+    ready:    [`Неделя ${S.level + 1}: ${lv.name}`, S.level === 0 ? 'Разбейте все встречи и дела. Двигайте ракетку мышью, пальцем или стрелками.' : 'Регулярные дела на месте, разовые новые.', 'Начать'],
+    lost:     ['Мяч упущен', `Осталось жизней: ${S.lives}. Дела никуда не делись.`, 'Продолжить'],
+    levelwin: ['Календарь чист!', `Неделя ${S.level + 1} свободна. Всего освобождено ${fmtH(S.hours)}.`, 'Следующая неделя'],
+    gameover: ['Вас снова позвали на созвон', `Освобождено ${fmtH(S.hours)}. Попробуем ещё раз?`, 'Сыграть снова'],
+    win:      ['Все три недели свободны', `Освобождено ${fmtH(S.hours)}. Можно ехать в отпуск.`, 'Сыграть снова'],
+    paused:   ['Пауза', 'Календарь подождёт.', 'Продолжить'],
+  }[mode];
+  $('pauseBtn').textContent = mode === 'paused' ? 'Продолжить' : mode ? 'Играть' : 'Пауза';
+  if (!txt){ ov.hidden = true; return; }
+  $('ovTitle').textContent = txt[0]; $('ovText').textContent = txt[1]; $('ovBtn').textContent = txt[2];
+  ov.hidden = false;
+}
+function primary(){
+  if (S.mode === 'play'){ launch(); return; }
+  if (S.mode === 'levelwin'){ startLevel(S.level + 1); show('ready'); return; }
+  if (S.mode === 'gameover' || S.mode === 'win'){ newGame(); return; }
+  show(null); S.mode = 'play';
+}
+$('ovBtn').addEventListener('click', e => { e.stopPropagation(); primary(); });
+$('restartBtn').addEventListener('click', e => { e.currentTarget.blur(); newGame(); });
+$('pauseBtn').addEventListener('click', e => { e.currentTarget.blur(); if (S.mode === 'play' || S.mode === 'paused') togglePause(); else primary(); });
+function togglePause(){ if (S.mode === 'play') show('paused'); else if (S.mode === 'paused'){ show(null); S.mode = 'play'; } }
+$('sizeBtn').addEventListener('click', e => {
+  e.currentTarget.blur();
+  const root = document.documentElement, on = !root.classList.contains('big');
+  root.classList.toggle('big', on);
+  $('sizeBtn').textContent = on ? 'Обычный' : 'Крупнее';
+  try {
+    if (on && root.requestFullscreen) root.requestFullscreen().catch(() => {});
+    else if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  } catch (_) {}
+});
+document.addEventListener('fullscreenchange', () => {
+  // in full screen the browser uses Esc to leave it, so treat that exit as a pause
+  if (!document.fullscreenElement && S.mode === 'play') show('paused');
+  if (!document.fullscreenElement && document.documentElement.classList.contains('big')){
+    document.documentElement.classList.remove('big'); $('sizeBtn').textContent = 'Крупнее';
+  }
+});
+
+function fmtH(h){ return (Number.isInteger(h) ? h : h.toFixed(1)) + ' ч'; }
+function updateHud(){
+  $('hours').textContent = fmtH(S.hours);
+  $('lives').textContent = '●'.repeat(Math.max(0, S.lives)) || '—';
+  const ws = weekStart(S.level), we = new Date(ws); we.setDate(ws.getDate() + 6);
+  const f = d => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  $('weekLabel').textContent = `Неделя ${S.level + 1} из 3 · ${f(ws)} — ${f(we)}`;
+}
+
+// ---------- input ----------
+function toLogical(clientX){ const r = cv.getBoundingClientRect(); return (clientX - r.left) / r.width * W; }
+cv.addEventListener('pointermove', e => { S.paddle.x = clampPaddle(toLogical(e.clientX)); });
+cv.addEventListener('pointerdown', e => { S.paddle.x = clampPaddle(toLogical(e.clientX)); if (S.mode === 'play') launch(); else primary(); });
+addEventListener('keydown', e => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (e.key === 'Escape' || e.code === 'Escape' || e.code === 'KeyP'){
+    if (tag === 'TEXTAREA' || tag === 'INPUT'){ if (e.code !== 'KeyP') document.activeElement.blur(); else return; }
+    e.preventDefault(); togglePause(); return;
+  }
+  if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ф') S.keys.l = true;
+  else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'в') S.keys.r = true;
+  else if (e.key === ' ' || e.key === 'Enter'){ if (tag === 'BUTTON' && e.key === 'Enter') return; e.preventDefault(); primary(); }
+  else return;
+  if (e.key.startsWith('Arrow')) e.preventDefault();
+});
+addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ф') S.keys.l = false;
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'в') S.keys.r = false;
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden && S.mode === 'play') show('paused'); });
+addEventListener('blur', () => { if (S.mode === 'play') show('paused'); });
+cv.tabIndex = 0;
+cv.addEventListener('pointerdown', () => cv.focus({ preventScroll: true }));
+function clampPaddle(x){ const h = S.paddle.w / 2; return Math.max(h, Math.min(W - h, x)); }
+
+// ---------- physics ----------
+function update(dt){
+  S.t += dt;
+  const p = S.paddle;
+  if (S.keys.l) p.x -= 600 * dt;
+  if (S.keys.r) p.x += 600 * dt;
+  if (p.wideUntil && S.t > p.wideUntil){ p.w = PW; p.wideUntil = 0; }
+  p.x = clampPaddle(p.x);
+  S.blocks.forEach(b => b.flash = Math.max(0, b.flash - dt * 4));
+
+  const steps = Math.max(1, Math.ceil(S.speed * dt / 4)), h = dt / steps;
+  for (const b of S.balls){
+    if (b.stuck){ b.x = p.x; b.y = PADDLE_Y - BALL_R - 1; continue; }
+    for (let s = 0; s < steps && !b.dead && S.mode === 'play'; s++) stepBall(b, h);
+  }
+  if (S.mode !== 'play') return;
+  S.balls = S.balls.filter(b => !b.dead);
+  if (!S.balls.length){
+    S.lives--; updateHud();
+    if (S.lives <= 0){ show('gameover'); return; }
+    resetBall(); show('lost'); return;
+  }
+  for (const d of S.drops){
+    d.y += 150 * dt;
+    if (d.y + 9 >= PADDLE_Y && d.y - 9 <= PADDLE_Y + PADDLE_H && Math.abs(d.x - p.x) < p.w / 2 + 40){ d.dead = true; applyDrop(d.type); }
+    if (d.y > H + 20) d.dead = true;
+  }
+  S.drops = S.drops.filter(d => !d.dead);
+  for (const q of S.parts){ q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 600 * dt; q.life -= dt; }
+  S.parts = S.parts.filter(q => q.life > 0);
+  for (const f of S.floats){ f.y -= 30 * dt; f.life -= dt; }
+  S.floats = S.floats.filter(f => f.life > 0);
+}
+
+function stepBall(b, h){
+  const r = BALL_R;
+  b.x += b.vx * h; b.y += b.vy * h;
+  if (b.x < r){ b.x = r; b.vx = Math.abs(b.vx); }
+  if (b.x > W - r){ b.x = W - r; b.vx = -Math.abs(b.vx); }
+  if (b.y < HEAD + r){ b.y = HEAD + r; b.vy = Math.abs(b.vy); }
+  const p = S.paddle;
+  if (b.vy > 0 && b.y + r >= PADDLE_Y && b.y - r <= PADDLE_Y + PADDLE_H && Math.abs(b.x - p.x) <= p.w / 2 + r){
+    const off = Math.max(-1, Math.min(1, (b.x - p.x) / (p.w / 2)));
+    const a = off * 1.05;
+    b.vx = S.speed * Math.sin(a); b.vy = -S.speed * Math.cos(a); b.y = PADDLE_Y - r;
+  }
+  if (b.y - r > H){ b.dead = true; return; }
+  if (b.y - r > GRID_BOTTOM) return;
+  for (const k of S.blocks){
+    if (!k.alive) continue;
+    const cx = Math.max(k.x, Math.min(b.x, k.x + k.w)), cy = Math.max(k.y, Math.min(b.y, k.y + k.h));
+    const dx = b.x - cx, dy = b.y - cy;
+    if (dx * dx + dy * dy >= r * r) continue;
+    if (dx === 0 && dy === 0){ b.vy = -b.vy; b.y += b.vy > 0 ? r : -r; }
+    else if (Math.abs(dx) > Math.abs(dy)){ b.vx = Math.sign(dx) * Math.abs(b.vx); b.x = cx + Math.sign(dx) * r; }
+    else { b.vy = Math.sign(dy) * Math.abs(b.vy); b.y = cy + Math.sign(dy) * r; }
+    hit(k);
+    break;
+  }
+}
+
+function colorsFor(type){
+  if (type === 'fam') return [C['fam-fill'], C['fam-ink'], C['fam-edge']];
+  if (type === 'work') return [C['work-fill'], C['work-ink'], C['work-edge']];
+  if (type === 'me') return [C['me-fill'], C['me-ink'], C['me-edge']];
+  return [C['solid-fill'], C['solid-ink'], C.line];
+}
+
+function hit(k){
+  k.flash = 1;
+  if (k.type === 'solid') return;
+  k.hp--;
+  S.speed = Math.min(520, S.speed + 3);
+  S.balls.forEach(b => { if (!b.stuck){ const m = Math.hypot(b.vx, b.vy) || 1; b.vx *= S.speed / m; b.vy *= S.speed / m; }});
+  if (k.hp > 0) return;
+  k.alive = false;
+  S.hours += k.span;
+  updateHud();
+  const col = colorsFor(k.type)[2];
+  if (!reduceMotion) for (let i = 0; i < 14; i++)
+    S.parts.push({ x: k.x + Math.random() * k.w, y: k.y + Math.random() * k.h, vx: (Math.random() - .5) * 220, vy: (Math.random() - .8) * 200, life: .6 + Math.random() * .4, col });
+  S.floats.push({ x: k.x + k.w / 2, y: k.y + k.h / 2, text: `+${k.span} ч`, life: 1, type: k.type });
+  if (Math.random() < 0.2){
+    const types = ['wide', 'wide', 'multi', 'multi', 'life'];
+    S.drops.push({ x: k.x + k.w / 2, y: k.y + k.h / 2, type: types[Math.floor(Math.random() * types.length)] });
+  }
+  if (S.blocks.every(b => !b.alive || b.type === 'solid')){
+    S.drops = [];
+    show(S.level >= LEVELS.length - 1 ? 'win' : 'levelwin');
+  }
+}
+
+function applyDrop(t){
+  const p = S.paddle;
+  if (t === 'wide'){ p.w = PW_WIDE; p.wideUntil = S.t + 12; }
+  if (t === 'life'){ S.lives = Math.min(5, S.lives + 1); updateHud(); }
+  if (t === 'multi'){
+    const src = S.balls.find(b => !b.stuck) || S.balls[0];
+    [-0.5, 0.5].forEach(a => {
+      const ang = Math.atan2(src.vx, -src.vy || -1) + a;
+      S.balls.push({ x: src.x, y: Math.min(src.y, PADDLE_Y - 20), vx: S.speed * Math.sin(ang), vy: -S.speed * Math.abs(Math.cos(ang)), stuck: false });
+    });
+  }
+  S.floats.push({ x: p.x, y: PADDLE_Y - 20, text: DROPS[t].label, life: 1.1, type: 'drop' });
+}
+
+// ---------- drawing ----------
+function rr(x, y, w, h, r){ ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+function wrap(text, maxW, maxLines){
+  const words = text.split(' '), lines = []; let cur = '';
+  for (const w of words){
+    const t = cur ? cur + ' ' + w : w;
+    if (ctx.measureText(t).width <= maxW) cur = t;
+    else { if (cur) lines.push(cur); cur = w; }
+  }
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines){
+    lines.length = maxLines;
+    let l = lines[maxLines - 1];
+    while (l.length > 1 && ctx.measureText(l + '…').width > maxW) l = l.slice(0, -1);
+    lines[maxLines - 1] = l + '…';
+  }
+  return lines.map(l => { while (l.length > 1 && ctx.measureText(l).width > maxW) l = l.slice(0, -2) + '…'; return l; });
+}
+
+function draw(){
+  ctx.fillStyle = C.surface; ctx.fillRect(0, 0, W, H);
+  const ws = weekStart(S.level), today = new Date(); today.setHours(0,0,0,0);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let c = 0; c < COLS; c++){
+    const d = new Date(ws); d.setDate(ws.getDate() + c);
+    ctx.font = '700 13px Onest, system-ui, sans-serif';
+    ctx.fillStyle = d.getTime() === today.getTime() ? C.ball : C.muted;
+    ctx.fillText(`${DAYS[c]} ${d.getDate()}`, GUT + c * COLW + COLW / 2, HEAD / 2 + 1);
+  }
+  ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, HEAD + .5); ctx.lineTo(W, HEAD + .5); ctx.stroke();
+
+  ctx.fillStyle = C.line; ctx.globalAlpha = .35; ctx.fillRect(GUT + 5 * COLW, HEAD, 2 * COLW, GRID_BOTTOM - HEAD); ctx.globalAlpha = 1;
+  ctx.beginPath();
+  for (let c = 0; c < COLS; c++){ ctx.moveTo(GUT + c * COLW + .5, HEAD); ctx.lineTo(GUT + c * COLW + .5, GRID_BOTTOM); }
+  for (let r = 0; r <= ROWS; r++){ const y = TOP + r * SLOT + .5; ctx.moveTo(GUT, y); ctx.lineTo(W, y); }
+  ctx.stroke();
+  ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, TOP + SLOT + 1); ctx.lineTo(W, TOP + SLOT + 1); ctx.stroke(); ctx.lineWidth = 1;
+  ctx.font = '600 10.5px Onest, system-ui, sans-serif'; ctx.fillStyle = C.muted; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+  for (let r = 1; r < ROWS; r++) ctx.fillText(`${START_HOUR + r - 1}`, GUT - 6, TOP + r * SLOT + 4);
+  ctx.font = '600 9px Onest, system-ui, sans-serif';
+  ctx.fillText('весь', GUT - 4, TOP + 8); ctx.fillText('день', GUT - 4, TOP + 19);
+  ctx.textBaseline = 'alphabetic';
+
+  for (const k of S.blocks){
+    if (!k.alive) continue;
+    const [fill, ink, edge] = colorsFor(k.type);
+    ctx.globalAlpha = k.type === 'solid' ? 1 : 0.55 + 0.45 * (k.hp / k.max);
+    rr(k.x, k.y, k.w, k.h, 5); ctx.fillStyle = fill; ctx.fill();
+    ctx.lineWidth = 1 + k.flash * 1.5; ctx.strokeStyle = edge; ctx.stroke();
+    if (k.type === 'solid'){
+      ctx.save(); rr(k.x, k.y, k.w, k.h, 5); ctx.clip();
+      ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.beginPath();
+      for (let i = -k.h; i < k.w; i += 7){ ctx.moveTo(k.x + i, k.y + k.h); ctx.lineTo(k.x + i + k.h, k.y); }
+      ctx.stroke(); ctx.restore();
+    }
+    if (k.hp < k.max){
+      ctx.strokeStyle = edge; ctx.lineWidth = 1; ctx.beginPath();
+      ctx.moveTo(k.x + k.w * .62, k.y); ctx.lineTo(k.x + k.w * .55, k.y + k.h * .45); ctx.lineTo(k.x + k.w * .7, k.y + k.h);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = ink; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    if (k.half !== undefined){
+      ctx.font = '700 11px Onest, system-ui, sans-serif';
+      ctx.fillText(wrap(k.title, k.w - 9, 1)[0] || '', k.x + 5, k.y + 12);
+      continue;
+    }
+    let ty = k.y + 15;
+    if (k.span > 1 && k.label){
+      ctx.font = '600 10.5px Onest, system-ui, sans-serif';
+      ctx.fillText(k.label, k.x + 5, ty); ty += 15;
+    }
+    ctx.font = '700 12.5px Onest, system-ui, sans-serif';
+    wrap(k.title, k.w - 9, k.span > 1 ? 3 : 2).forEach((l, i) => ctx.fillText(l, k.x + 5, ty + i * 15));
+    if (k.max > 1 && k.type !== 'solid'){
+      for (let i = 0; i < k.max; i++){
+        ctx.beginPath(); ctx.arc(k.x + k.w - 7 - i * 6, k.y + k.h - 6, 2, 0, Math.PI * 2);
+        ctx.fillStyle = i < k.hp ? ink : edge; ctx.globalAlpha = i < k.hp ? .8 : .4; ctx.fill(); ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  for (const q of S.parts){ ctx.globalAlpha = Math.max(0, q.life); ctx.fillStyle = q.col; ctx.fillRect(q.x, q.y, 4, 4); }
+  ctx.globalAlpha = 1;
+
+  for (const d of S.drops){
+    const label = DROPS[d.type].label;
+    ctx.font = '700 11px Onest, system-ui, sans-serif';
+    const w = ctx.measureText(label).width + 18;
+    rr(d.x - w / 2, d.y - 10, w, 20, 10); ctx.fillStyle = C.ink; ctx.fill();
+    ctx.fillStyle = C.surface; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, d.x, d.y + 1);
+  }
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const f of S.floats){
+    ctx.globalAlpha = Math.min(1, f.life * 1.5);
+    ctx.font = '700 13px Onest, system-ui, sans-serif';
+    ctx.fillStyle = f.type === 'drop' ? C.ink : colorsFor(f.type)[1];
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+
+  const p = S.paddle;
+  ctx.strokeStyle = C.now; ctx.globalAlpha = .25; ctx.setLineDash([3, 4]); ctx.beginPath();
+  ctx.moveTo(0, PADDLE_Y + PADDLE_H / 2); ctx.lineTo(W, PADDLE_Y + PADDLE_H / 2); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+  rr(p.x - p.w / 2, PADDLE_Y, p.w, PADDLE_H, 6); ctx.fillStyle = C.paddle; ctx.fill();
+  if (p.wideUntil){
+    const left = Math.max(0, (p.wideUntil - S.t) / 12);
+    ctx.fillStyle = C.ball; ctx.fillRect(p.x - p.w / 2 + 6, PADDLE_Y + PADDLE_H - 3, (p.w - 12) * left, 2);
+  }
+  for (const b of S.balls){ ctx.beginPath(); ctx.arc(b.x, b.y, BALL_R, 0, Math.PI * 2); ctx.fillStyle = C.ball; ctx.fill(); }
+  if (S.mode === 'play' && S.balls.some(b => b.stuck)){
+    ctx.font = '500 12px Onest, system-ui, sans-serif'; ctx.fillStyle = C.muted; ctx.textAlign = 'center';
+    ctx.fillText('Клик или пробел — запустить мяч', W / 2, PADDLE_Y - 34);
+  }
+}
+
+let last = performance.now();
+function loop(now){
+  const dt = Math.min(0.033, (now - last) / 1000); last = now;
+  if (S.mode === 'play') update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- own calendar editor ----------
+let savedText = null;
+try { savedText = localStorage.getItem(STORE); } catch (_) {}
+$('weekText').value = savedText || DEFAULT_TEXT;
+loadWeek($('weekText').value);
+
+$('editBtn').addEventListener('click', e => {
+  const ed = $('editor'); ed.hidden = !ed.hidden;
+  e.currentTarget.textContent = ed.hidden ? 'Свой календарь' : 'Скрыть календарь';
+  if (!ed.hidden){ if (S.mode === 'play') show('paused'); ed.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }); }
+});
+$('applyBtn').addEventListener('click', () => {
+  const text = $('weekText').value;
+  const { n, bad } = loadWeek(text);
+  const st = $('parseStatus');
+  if (!n){ st.textContent = 'Не нашёл ни одного дела. Проверьте формат строк.'; st.classList.add('err'); return; }
+  st.classList.remove('err');
+  st.textContent = `Дел в календаре: ${n}.` + (bad.length ? ` Не понял строки: ${bad.join(', ')}.` : '');
+  try { localStorage.setItem(STORE, text); } catch (_) {}
+  newGame();
+  $('stage').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+});
+$('resetBtn').addEventListener('click', () => {
+  $('weekText').value = DEFAULT_TEXT;
+  try { localStorage.removeItem(STORE); } catch (_) {}
+  loadWeek(DEFAULT_TEXT); newGame();
+  $('parseStatus').classList.remove('err'); $('parseStatus').textContent = 'Вернул исходный календарь.';
+});
+
+const PROMPT = `На картинке — скриншот недельного календаря. Перепиши все события, которые видны.
+Ответь только JSON-массивом объектов такого вида:
+[{"day":"Пн","allDay":false,"start":"15:00","end":"16:00","title":"Метроном","kind":"работа","repeat":true}]
+Правила:
+- day: одно из Пн, Вт, Ср, Чт, Пт, Сб, Вс.
+- allDay: true для событий в строке «весь день» (тогда start и end — null).
+- start и end в формате ЧЧ:ММ, по положению блока на сетке времени, если время не подписано.
+- title: короткое название до 22 символов, без потери смысла; сокращай слова «на», «к», «в», если нужно.
+- kind: «работа» для встреч, созвонов, синков, рабочих задач; «семья» для детей, врачей, кружков, бытовых дел; «моё» для личных занятий владельца календаря.
+- repeat: true, если у события есть значок повтора (две стрелки по кругу), иначе false.
+- Пропусти пустые выделенные блоки без названия и дни рождения.`;
+
+let sampleFn = null, ctl = null;
+function setUploadAvailable(ok){
+  $('uploadLbl').hidden = !ok;
+  if (!ok) $('uploadNote').textContent = 'Впишите свои дела в список ниже и нажмите «Играть». Распознавание скриншота работает, когда игра открыта в Claude.';
+}
+setUploadAvailable(false);
+(async () => {
+  try {
+    const s = window.claude && await window.claude.use('sample');
+    if (!s) return;
+    const lim = await s.limits().catch(() => null);
+    if (!lim || !lim.images) return;
+    sampleFn = s; setUploadAvailable(true);
+    $('uploadNote').textContent = 'Загрузите скриншот своей недели — Claude перепишет события в список ниже. Список можно поправить руками, потом нажать «Играть».';
+  } catch (_) {}
+})();
+
+const pad = s => (s || '').replace(/^(\d):/, '0$1:');
+$('shot').addEventListener('change', async e => {
+  const file = e.target.files && e.target.files[0]; e.target.value = '';
+  if (!file || !sampleFn) return;
+  const st = $('aiStatus'); st.classList.remove('err'); st.textContent = 'Claude смотрит на календарь… Обычно это до минуты.';
+  ctl = new AbortController(); $('stopBtn').hidden = false; $('uploadLbl').style.pointerEvents = 'none';
+  try {
+    const items = await sampleFn.json(PROMPT, { images: [file], signal: ctl.signal });
+    if (!Array.isArray(items) || !items.length) throw { code: 'empty' };
+    const lines = items.filter(x => x && x.title && DAYS.includes(x.day)).map(x => {
+      const when = x.allDay || !x.start ? 'весь день' : `${pad(x.start)}-${pad(x.end || x.start)}`;
+      const kind = ['работа','семья','моё'].includes(x.kind) ? x.kind : 'семья';
+      return `${x.day} ${when} | ${String(x.title).replace(/\|/g, '/')} | ${kind}${x.repeat ? ' | каждую неделю' : ''}`;
+    });
+    lines.sort((a, b) => DAYS.indexOf(a.slice(0, 2)) - DAYS.indexOf(b.slice(0, 2)));
+    $('weekText').value = lines.join('\n');
+    st.textContent = `Нашёл дел: ${lines.length}. Проверьте список, поправьте, если нужно, и нажмите «Играть».`;
+  } catch (err) {
+    const code = err && err.code;
+    st.classList.add('err');
+    st.textContent = code === 'cancelled' ? 'Остановлено.'
+      : code === 'not_granted' || code === 'sampling_disabled' ? 'Без доступа к Claude распознать скриншот не получится. Впишите дела вручную.'
+      : code === 'rate_limited' ? 'Слишком много запросов. Попробуйте чуть позже.'
+      : code === 'image_rejected' ? 'Не получилось открыть картинку. Нужен PNG, JPG или WebP.'
+      : 'Не получилось разобрать скриншот. Попробуйте ещё раз или другой скриншот.';
+    if (code === 'not_granted' || code === 'sampling_disabled'){ sampleFn = null; setUploadAvailable(false); }
+  } finally {
+    $('stopBtn').hidden = true; $('uploadLbl').style.pointerEvents = '';
+  }
+});
+$('stopBtn').addEventListener('click', () => ctl && ctl.abort());
+
+newGame();
+resize();
+(document.fonts && document.fonts.load ? Promise.all([document.fonts.load('700 12px Onest'), document.fonts.load('800 20px Unbounded')]) : Promise.resolve())
+  .catch(() => {}).finally(() => requestAnimationFrame(loop));
+})();
+</script>
+
+</body></html>
