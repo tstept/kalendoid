@@ -76,7 +76,8 @@ button:focus-visible,.btn:focus-within{outline:2px solid var(--ball);outline-off
 .editor{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
 .editor h3{font-family:var(--font-display);font-weight:600;font-size:15px;margin:0}
 .editor p{margin:0;font-size:13px;color:var(--muted);line-height:1.5}
-.editor textarea{width:100%;box-sizing:border-box;min-height:220px;font:13px/1.55 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+.editor textarea::placeholder{color:var(--muted);opacity:.7}
+.editor textarea{width:100%;box-sizing:border-box;min-height:150px;font:13px/1.55 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical}
 .editor textarea:focus{outline:2px solid var(--work-edge);outline-offset:0}
 .editor .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -127,19 +128,19 @@ button:focus-visible,.btn:focus-within{outline:2px solid var(--ball);outline-off
 
   <section class="editor" id="editor" hidden>
     <h3>Свой календарь</h3>
-    <p id="uploadNote">Загрузите скриншот своей недели — Claude перепишет события в список ниже. Список можно поправить руками, потом нажать «Играть».</p>
+    <p>Впишите свои дела, по одному в строке: день, час и название. Цвет подберётся сам.</p>
+    <textarea id="weekText" spellcheck="false" aria-label="Ваши дела" placeholder="пн 9 тренировка&#10;ср 10 врач&#10;чт 17 книжный клуб"></textarea>
+    <div class="row">
+      <button type="button" id="applyBtn">Играть</button>
+      <button type="button" id="resetBtn" class="ghost">Очистить</button>
+    </div>
+    <div class="status" id="parseStatus" aria-live="polite"></div>
+    <p id="uploadNote" hidden>Или загрузите скриншот календаря — Claude сам перепишет дела в список.</p>
     <div class="row">
       <label class="btn" id="uploadLbl">Загрузить скриншот<input type="file" id="shot" accept="image/png,image/jpeg,image/webp"></label>
       <button type="button" id="stopBtn" class="ghost" hidden>Остановить</button>
     </div>
     <div class="status" id="aiStatus" aria-live="polite"></div>
-    <label for="weekText" class="hint">Одна строка — одно дело: <code>Пн 15:00-16:00 | Метроном | работа | каждую неделю</code>. Тип: работа, семья или моё. Без «каждую неделю» дело разовое и на следующих неделях не появится. Для дел на весь день пишите <code>Пн весь день | …</code></label>
-    <textarea id="weekText" spellcheck="false"></textarea>
-    <div class="row">
-      <button type="button" id="applyBtn">Играть с этим календарём</button>
-      <button type="button" id="resetBtn" class="ghost">Вернуть исходный</button>
-    </div>
-    <div class="status" id="parseStatus" aria-live="polite"></div>
   </section>
 </div>
 
@@ -219,10 +220,40 @@ function weekStart(offset){
 
 // ---------- calendar text format ----------
 const TYPE_WORDS = { 'работа': 'work', 'семья': 'fam', 'моё': 'me', 'мое': 'me', 'личное': 'me' };
+const DAY_RE = /^(пн|пон[а-я]*|вт[а-я]*|ср[а-я]*|чт|чет[а-я]*|пт|пят[а-я]*|сб|суб[а-я]*|вс|вос[а-я]*)\.?[,\s]+/i;
+const DAY_KEYS = ['п', 'вт', 'ср', 'ч', 'пт|пя', 'сб|су', 'вс|во'];
+function dayIndex(w){
+  w = w.toLowerCase();
+  if (w.startsWith('пн') || w.startsWith('пон')) return 0;
+  if (w.startsWith('вт')) return 1; if (w.startsWith('ср')) return 2;
+  if (w.startsWith('ч')) return 3; if (w.startsWith('пт') || w.startsWith('пя')) return 4;
+  if (w.startsWith('сб') || w.startsWith('су')) return 5; return 6;
+}
+const WORK_RE = /созвон|встреч|синк|план[её]р|отч[её]т|работ|клиент|дедлайн|ревью|презентац|митинг|собес|интервью|проект|офис|совещ|команд|доклад|бюджет/i;
+const FAM_RE = /врач|школ|садик|д\/с|кружок|секци|реб[её]н|дет|сын|доч|мам|пап|бабуш|дедуш|родител|собрани|продукт|магазин|аптек|шиномонтаж|рецепт|уборк|стирк|логопед|ортодонт|стоматолог|поликлин|педиатр|семь|дом/i;
+function guessType(t){ return WORK_RE.test(t) ? 'work' : FAM_RE.test(t) ? 'fam' : 'me'; }
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+// simple line: "пн 9 тренировка", "ср 10:30 врач", "чт 17-19 книжный клуб", "сб весь день дача"
+function parseSimple(line){
+  const dm = line.match(DAY_RE); if (!dm) return null;
+  const d = dayIndex(dm[1]); let rest = line.slice(dm[0].length).trim();
+  const ad = rest.match(/^весь\s+день\s+(.+)$/i);
+  if (ad){ const title = cap(ad[1].trim()).slice(0, 40); return { d, allDay: true, title, type: guessType(title), repeat: true }; }
+  const t = rest.match(/^(\d{1,2})(?:[:.](\d{2}))?(?:\s*[-–—]\s*(\d{1,2})(?:[:.](\d{2}))?)?\s+(.+)$/);
+  if (!t || +t[1] > 23) return null;
+  const s = +t[1] + (+t[2] || 0) / 60;
+  const e = t[3] ? +t[3] + (+t[4] || 0) / 60 : s + 1;
+  const title = cap(t[5].trim()).slice(0, 40);
+  const hm = (h, m) => `${h}:${m || '00'}`;
+  return { d, allDay: false, start: s, end: Math.max(e, s + 0.25), label: t[3] ? `${hm(t[1], t[2])}–${hm(t[3], t[4])}` : hm(t[1], t[2]), title, type: guessType(title), repeat: true };
+}
+
 function parseWeek(text){
   const events = [], bad = [];
   text.split('\n').forEach((raw, i) => {
     const line = raw.trim(); if (!line) return;
+    if (!line.includes('|')){ const ev = parseSimple(line); if (ev) events.push(ev); else bad.push(i + 1); return; }
     const parts = line.split('|').map(s => s.trim());
     const m = parts[0].match(/^(пн|вт|ср|чт|пт|сб|вс)[а-я]*\.?\s*(.*)$/i);
     if (!m || !parts[1]){ bad.push(i + 1); return; }
@@ -310,6 +341,26 @@ function buildLevel(li){
       for (let k = 0; k < span; k++) occ[c][row + k] = true;
       const label = span > 1 ? `${hr}:00–${hr + 2}:00` : '';
       blocks.push(mk(c, row, span, type, title, Math.min(3, span + (li >= 2 && type === 'work' && r() < .4 ? 1 : 0)), undefined, label));
+      break;
+    }
+  }
+  // never leave the field half-empty: top up short calendars with everyday chores
+  const MIN = [16, 22, 28][li];
+  const FILL = shuffle([
+    ...['Стирка','Аптека','Уборка','Звонок маме','Продукты','Квитанции','Химчистка','Готовка'].map(t => ['fam', t]),
+    ...['Письма','Созвон','Отчёт','Планёрка','Ревью','Таблички','Бюджет','Презентация'].map(t => ['work', t]),
+    ...['Спортзал','Маникюр','Книга','Прогулка','Курсы','Йога'].map(t => ['me', t]),
+  ], r);
+  const live = () => blocks.filter(b => b.type !== 'solid').length;
+  for (const [type, title] of FILL){
+    if (live() >= MIN) break;
+    if (blocks.some(b => b.title === title)) continue;
+    for (let tries = 0; tries < 200; tries++){
+      const c = Math.floor(r() * (type === 'work' ? 5 : COLS));
+      const row = 1 + Math.floor(r() * (type === 'work' ? 9 : HOURS));
+      if (row >= ROWS || occ[c][row]) continue;
+      occ[c][row] = true;
+      blocks.push(mk(c, row, 1, type, title, li >= 2 && type === 'work' ? 2 : 1));
       break;
     }
   }
@@ -652,8 +703,8 @@ function loop(now){
 // ---------- own calendar editor ----------
 let savedText = null;
 try { savedText = localStorage.getItem(STORE); } catch (_) {}
-$('weekText').value = savedText || DEFAULT_TEXT;
-loadWeek($('weekText').value);
+$('weekText').value = savedText || '';
+loadWeek(savedText || DEFAULT_TEXT);
 
 $('editBtn').addEventListener('click', e => {
   const ed = $('editor'); ed.hidden = !ed.hidden;
@@ -664,36 +715,34 @@ $('applyBtn').addEventListener('click', () => {
   const text = $('weekText').value;
   const { n, bad } = loadWeek(text);
   const st = $('parseStatus');
-  if (!n){ st.textContent = 'Не нашёл ни одного дела. Проверьте формат строк.'; st.classList.add('err'); return; }
+  if (!n){ loadWeek(savedText || DEFAULT_TEXT); st.textContent = 'Не нашёл ни одного дела. Пишите так: пн 9 тренировка'; st.classList.add('err'); return; }
   st.classList.remove('err');
-  st.textContent = `Дел в календаре: ${n}.` + (bad.length ? ` Не понял строки: ${bad.join(', ')}.` : '');
+  st.textContent = `Дел в календаре: ${n}.` + (bad.length ? ` Не понял строки: ${bad.join(', ')}. Нужно так: пн 9 тренировка.` : '');
+  savedText = text;
   try { localStorage.setItem(STORE, text); } catch (_) {}
   newGame();
   $('stage').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
 });
 $('resetBtn').addEventListener('click', () => {
-  $('weekText').value = DEFAULT_TEXT;
+  $('weekText').value = ''; savedText = null;
   try { localStorage.removeItem(STORE); } catch (_) {}
   loadWeek(DEFAULT_TEXT); newGame();
-  $('parseStatus').classList.remove('err'); $('parseStatus').textContent = 'Вернул исходный календарь.';
+  $('parseStatus').classList.remove('err'); $('parseStatus').textContent = 'Список очищен, игра вернулась к исходной неделе.';
 });
 
 const PROMPT = `На картинке — скриншот недельного календаря. Перепиши все события, которые видны.
 Ответь только JSON-массивом объектов такого вида:
-[{"day":"Пн","allDay":false,"start":"15:00","end":"16:00","title":"Метроном","kind":"работа","repeat":true}]
+[{"day":"Пн","allDay":false,"start":"15:00","end":"16:00","title":"Метроном"}]
 Правила:
 - day: одно из Пн, Вт, Ср, Чт, Пт, Сб, Вс.
 - allDay: true для событий в строке «весь день» (тогда start и end — null).
 - start и end в формате ЧЧ:ММ, по положению блока на сетке времени, если время не подписано.
 - title: короткое название до 22 символов, без потери смысла; сокращай слова «на», «к», «в», если нужно.
-- kind: «работа» для встреч, созвонов, синков, рабочих задач; «семья» для детей, врачей, кружков, бытовых дел; «моё» для личных занятий владельца календаря.
-- repeat: true, если у события есть значок повтора (две стрелки по кругу), иначе false.
 - Пропусти пустые выделенные блоки без названия и дни рождения.`;
 
 let sampleFn = null, ctl = null;
 function setUploadAvailable(ok){
-  $('uploadLbl').hidden = !ok;
-  if (!ok) $('uploadNote').textContent = 'Впишите свои дела в список ниже и нажмите «Играть». Распознавание скриншота работает, когда игра открыта в Claude.';
+  $('uploadLbl').hidden = !ok; $('uploadNote').hidden = !ok;
 }
 setUploadAvailable(false);
 (async () => {
@@ -703,7 +752,6 @@ setUploadAvailable(false);
     const lim = await s.limits().catch(() => null);
     if (!lim || !lim.images) return;
     sampleFn = s; setUploadAvailable(true);
-    $('uploadNote').textContent = 'Загрузите скриншот своей недели — Claude перепишет события в список ниже. Список можно поправить руками, потом нажать «Играть».';
   } catch (_) {}
 })();
 
@@ -717,13 +765,12 @@ $('shot').addEventListener('change', async e => {
     const items = await sampleFn.json(PROMPT, { images: [file], signal: ctl.signal });
     if (!Array.isArray(items) || !items.length) throw { code: 'empty' };
     const lines = items.filter(x => x && x.title && DAYS.includes(x.day)).map(x => {
-      const when = x.allDay || !x.start ? 'весь день' : `${pad(x.start)}-${pad(x.end || x.start)}`;
-      const kind = ['работа','семья','моё'].includes(x.kind) ? x.kind : 'семья';
-      return `${x.day} ${when} | ${String(x.title).replace(/\|/g, '/')} | ${kind}${x.repeat ? ' | каждую неделю' : ''}`;
+      const when = x.allDay || !x.start ? 'весь день' : (x.end && x.end !== x.start ? `${x.start}-${x.end}` : x.start);
+      return `${x.day.toLowerCase()} ${when} ${String(x.title).replace(/\|/g, '/')}`;
     });
-    lines.sort((a, b) => DAYS.indexOf(a.slice(0, 2)) - DAYS.indexOf(b.slice(0, 2)));
+    lines.sort((a, b) => dayIndex(a.slice(0, 2)) - dayIndex(b.slice(0, 2)));
     $('weekText').value = lines.join('\n');
-    st.textContent = `Нашёл дел: ${lines.length}. Проверьте список, поправьте, если нужно, и нажмите «Играть».`;
+    st.textContent = `Нашёл дел: ${lines.length}. Проверьте список выше и нажмите «Играть».`;
   } catch (err) {
     const code = err && err.code;
     st.classList.add('err');
